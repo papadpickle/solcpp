@@ -2,7 +2,6 @@
 
 #include <spdlog/spdlog.h>
 
-#include <atomic>
 #include <functional>
 #include <nlohmann/json.hpp>
 
@@ -29,7 +28,10 @@ class trades {
     wssConnection.start();
   }
 
-  int64_t getLastTrade() const { return latestTrade.load(); }
+  int64_t getLastTrade() const {
+    const std::scoped_lock lock(latestTradeMtx);
+    return latestTrade;
+  }
 
  private:
   void onMessage(const json &parsedMsg) {
@@ -63,7 +65,10 @@ class trades {
             const auto &fill = (FillEvent &)event;
             timestamp = fill.timestamp;
             const auto timeOnBook = fill.timestamp - fill.makerTimestamp;
-            latestTrade.store(fill.price);
+            {
+              const std::scoped_lock lock(latestTradeMtx);
+              latestTrade = fill.price;
+            }
             updateCallback();
             break;
           }
@@ -91,7 +96,9 @@ class trades {
   }
 
   uint64_t lastSeqNum = INT_MAX;
-  atomic_uint64_t latestTrade = 0;
+  // todo:macos latomic not found issue, otherwise replace mtx with std::atomic
+  mutable std::mutex latestTradeMtx;
+  uint64_t latestTrade = 0;
   wssSubscriber wssConnection;
   std::function<void()> updateCallback;
 };

@@ -8,7 +8,7 @@ struct levelOne {
   uint64_t highestBidSize;
   uint64_t lowestAsk;
   uint64_t lowestAskSize;
-  uint64_t midPoint;
+  double midPoint;
   double spreadBps;
 
   bool valid() const {

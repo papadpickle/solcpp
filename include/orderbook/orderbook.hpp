@@ -1,7 +1,6 @@
 #pragma once
 #include <spdlog/spdlog.h>
 
-#include <atomic>
 #include <functional>
 #include <mutex>
 
@@ -29,7 +28,7 @@ class book {
   }
 
   void updateCallback() {
-    const std::lock_guard<std::mutex> lock(callbackMtx);
+    const std::scoped_lock lock(callbackMtx);
     levelOne newL1;
     auto bestBid = bids.getBestOrder();
     auto bestAsk = asks.getBestOrder();
@@ -39,24 +38,33 @@ class book {
     newL1.lowestAskSize = bestAsk.quantity;
 
     if (newL1.valid()) {
-      newL1.midPoint = (newL1.lowestAsk + newL1.highestBid) / 2;
-      newL1.spreadBps = (((double)newL1.lowestAsk - newL1.highestBid) * 10000) /
-                        newL1.midPoint;
-      level1.store(newL1);
+      newL1.midPoint = ((double)newL1.lowestAsk + newL1.highestBid) / 2;
+      newL1.spreadBps =
+          ((newL1.lowestAsk - newL1.highestBid) * 10000) / newL1.midPoint;
+      {
+        const std::scoped_lock lock(levelOneMtx);
+        level1 = newL1;
+      }
       onUpdateCb();
     }
   }
 
-  levelOne getLevel1() const { return level1.load(); }
+  levelOne getLevel1() const {
+    const std::scoped_lock lock(levelOneMtx);
+    return level1;
+  }
 
   uint64_t getDepth(int8_t percent) {
-    auto price = (level1.load().midPoint * (100 + percent)) / 100;
+    const std::scoped_lock lock(levelOneMtx);
+    auto price = (level1.midPoint * (100 + percent)) / 100;
     return (percent > 0) ? asks.getVolume<std::less_equal<uint64_t>>(price)
                          : bids.getVolume<std::greater_equal<uint64_t>>(price);
   }
 
  private:
-  std::atomic<levelOne> level1;
+  levelOne level1;
+  // todo:macos latomic not found issue, otherwise replace mtx with std::atomic
+  mutable std::mutex levelOneMtx;
   std::function<void()> onUpdateCb;
   std::mutex callbackMtx;
   subscription::bookSide& bids;

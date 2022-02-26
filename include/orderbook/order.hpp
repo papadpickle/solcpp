@@ -6,11 +6,11 @@ namespace orderbook {
 struct order {
   order(uint64_t price, uint64_t quantity) : price(price), quantity(quantity) {}
 
-  bool operator<(const order& compare) {
+  bool operator<(const order& compare) const {
     return (price < compare.price) ? true : false;
   }
 
-  bool operator>(const order& compare) {
+  bool operator>(const order& compare) const {
     return (price > compare.price) ? true : false;
   }
 
