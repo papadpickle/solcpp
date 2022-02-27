@@ -24,7 +24,7 @@ class bookSide {
       : side(side), wssConnection(account) {}
 
   void registerUpdateCallback(std::function<void()> callback) {
-    updateCallback = callback;
+    notifyCb = callback;
   }
 
   void subscribe() {
@@ -107,7 +107,7 @@ class bookSide {
           std::sort(orders.begin(), orders.end());
         }
       }
-      updateCallback();
+      notifyCb();
     }
   }
 
@@ -115,7 +115,7 @@ class bookSide {
   const Side side;
   mutable std::mutex ordersMtx;
   std::vector<orderbook::order> orders;
-  std::function<void()> updateCallback;
+  std::function<void()> notifyCb;
 };
 }  // namespace subscription
 }  // namespace mango_v3

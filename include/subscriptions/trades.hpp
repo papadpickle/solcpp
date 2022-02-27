@@ -19,7 +19,7 @@ class trades {
   trades(const std::string &account) : wssConnection(account) {}
 
   void registerUpdateCallback(std::function<void()> callback) {
-    updateCallback = callback;
+    notifyCb = callback;
   }
 
   void subscribe() {
@@ -54,44 +54,26 @@ class trades {
     const auto lastSlot =
         (events->header.head + events->header.count) % EVENT_QUEUE_SIZE;
 
+    bool gotLatest = false;
     if (events->header.seqNum > lastSeqNum) {
       for (int offset = seqNumDiff; offset > 0; --offset) {
         const auto slot =
             (lastSlot - offset + EVENT_QUEUE_SIZE) % EVENT_QUEUE_SIZE;
         const auto &event = events->items[slot];
-        uint64_t timestamp = 0;
-        switch (event.eventType) {
-          case EventType::Fill: {
-            const auto &fill = (FillEvent &)event;
-            timestamp = fill.timestamp;
-            const auto timeOnBook = fill.timestamp - fill.makerTimestamp;
-            {
-              const std::scoped_lock lock(latestTradeMtx);
-              latestTrade = fill.price;
-            }
-            updateCallback();
-            break;
-          }
-          case EventType::Out: {
-            const auto &out = (OutEvent &)event;
-            timestamp = out.timestamp;
-            break;
-          }
-          case EventType::Liquidate: {
-            const auto &liq = (LiquidateEvent &)event;
-            timestamp = liq.timestamp;
-            break;
-          }
-        }
 
-        const uint64_t lag =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                .count() -
-            timestamp * 1000;
+        if (event.eventType == EventType::Fill) {
+          const auto &fill = (FillEvent &)event;
+          const std::scoped_lock lock(latestTradeMtx);
+          latestTrade = fill.price;
+          gotLatest = true;
+        }
+        // no break; let's iterate to the last fill to get the latest fill order
       }
     }
 
+    if (gotLatest) {
+      notifyCb();
+    }
     lastSeqNum = events->header.seqNum;
   }
 
@@ -100,7 +82,7 @@ class trades {
   mutable std::mutex latestTradeMtx;
   uint64_t latestTrade = 0;
   wssSubscriber wssConnection;
-  std::function<void()> updateCallback;
+  std::function<void()> notifyCb;
 };
 }  // namespace subscription
 }  // namespace mango_v3
